@@ -12,4 +12,5 @@ import java.util.List;
 public interface AccessGroupRoleMapRepository extends JpaRepository<AccessGroupRoleMap, Long> {
     List<AccessGroupRoleMap> findByAccessGroupAndIsActiveTrue(AccessGroup accessGroup);
     boolean existsByAccessGroupAndRoleAndIsActiveTrue(AccessGroup accessGroup, Role role);
+    void deleteByAccessGroup(AccessGroup accessGroup);
 }

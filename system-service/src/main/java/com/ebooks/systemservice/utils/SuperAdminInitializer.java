@@ -51,6 +51,7 @@ public class SuperAdminInitializer {
             Status inactiveStatus = createOrGetStatus("DELETE", "DELETE");
 
             Role godRole = createOrGetRole("GOD", "GOD Role", "GOD");
+            initializeAllRoles();
 
             AccessGroup superAdminGroup = createOrGetAccessGroup("superadmin", activeStatus);
 
@@ -75,6 +76,10 @@ public class SuperAdminInitializer {
                 });
     }
 
+    private void initializeAllRoles(){
+        createOrGetRole("LOAN_CONFIGURATION", "Loan Configuration", "LOAN_CONFIGURATION");
+    }
+
     private Role createOrGetRole(String name, String description, String permission) {
         return roleRepository.findByPermission(permission)
                 .orElseGet(() -> {
@@ -92,6 +97,7 @@ public class SuperAdminInitializer {
                     AccessGroup group = new AccessGroup();
                     group.setName(name);
                     group.setStatus(status);
+                    group.setType("SYSTEM");
                     return accessGroupRepository.save(group);
                 });
     }

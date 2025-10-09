@@ -36,6 +36,13 @@ public class AccessGroup {
     @NotBlank(message = "Access group name is required")
     private String name;
 
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "type", nullable = false)
+    @NotBlank(message = "Access group type is required")
+    private String type;
+
     @Column(name = "recorded_date")
     private LocalDateTime recordedDate;
 
@@ -50,9 +57,7 @@ public class AccessGroup {
     @NotNull(message = "Status is required")
     private Status status;
 
-    @Setter
-    @Getter
-    @OneToMany(mappedBy = "accessGroup", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "accessGroup", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<AccessGroupRoleMap> accessGroupRoleMaps = new HashSet<>();
 
     @PrePersist
@@ -66,4 +71,19 @@ public class AccessGroup {
         updatedDate = LocalDateTime.now();
     }
 
+    public void addRole(Role role) {
+        AccessGroupRoleMap map = new AccessGroupRoleMap();
+        map.setAccessGroup(this);
+        map.setRole(role);
+        map.setIsActive(true);
+        this.accessGroupRoleMaps.add(map);
+    }
+
+    public void removeRole(Role role) {
+        this.accessGroupRoleMaps.removeIf(map -> map.getRole().equals(role));
+    }
+
+    public void clearRoles() {
+        this.accessGroupRoleMaps.clear();
+    }
 }

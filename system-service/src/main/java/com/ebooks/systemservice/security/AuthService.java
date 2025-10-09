@@ -1,10 +1,10 @@
 package com.ebooks.systemservice.security;
 
+import com.ebooks.commonservice.security.JwtUtil;
 import com.ebooks.systemservice.dtos.login.LoginRequest;
 import com.ebooks.systemservice.dtos.login.LoginResponse;
 import com.ebooks.systemservice.entities.SystemUser;
 import com.ebooks.systemservice.repositories.SystemUserRepository;
-import com.ebooks.systemservice.security.utils.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -24,6 +24,9 @@ public class AuthService {
     private JwtUtil jwtUtil;
 
     @Autowired
+    private JwtTokenGenerator jwtTokenGenerator;
+
+    @Autowired
     private SystemUserRepository userRepository;
 
     public LoginResponse authenticateUser(LoginRequest loginRequest) {
@@ -40,7 +43,7 @@ public class AuthService {
             SystemUser user = userRepository.findByUsername(loginRequest.getUsername())
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            String jwt = jwtUtil.generateToken(user);
+            String jwt = jwtTokenGenerator.generateToken(user);
 
             List<String> roles = jwtUtil.getRolesFromToken(jwt);
 
