@@ -18,7 +18,7 @@ public class SystemSecurityConfig extends CommonSecurityConfig {
     private UserDetailsServiceImpl userDetailsService;
 
     @Autowired
-    private PasswordEncoder passwordEncoder; // Inject the bean from common-service
+    private PasswordEncoder passwordEncoder;
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
@@ -38,7 +38,7 @@ public class SystemSecurityConfig extends CommonSecurityConfig {
         http.authenticationProvider(authenticationProvider())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/access-groups/**").hasRole("GOD")
+                        .requestMatchers("/api/v1/access-groups/**").hasRole("GOD")
                         .requestMatchers("/api/banks/**").hasRole("GOD")
                         .requestMatchers("/api/roles/**").hasRole("GOD")
                         .requestMatchers("/api/users/**").hasRole("GOD")

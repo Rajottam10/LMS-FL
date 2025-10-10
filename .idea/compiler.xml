@@ -2,6 +2,12 @@
 <project version="4">
   <component name="CompilerConfiguration">
     <annotationProcessing>
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="common-service" />
+      </profile>
       <profile name="Annotation profile for system-service" enabled="true">
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
@@ -10,11 +16,18 @@
           <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.40/lombok-1.18.40.jar" />
         </processorPath>
         <module name="system-service" />
+        <module name="bank-service" />
       </profile>
     </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="bank--service" target="17" />
+    </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="bank--service" options="-parameters" />
+      <module name="bank-service" options="-parameters" />
+      <module name="common-service" options="-parameters" />
       <module name="system-service" options="-parameters" />
     </option>
   </component>

@@ -4,7 +4,7 @@ import com.ebooks.commonservice.dtos.StatusDto;
 import com.ebooks.systemservice.entities.Status;
 import org.springframework.stereotype.Component;
 
-@Component
+//@Component
 public class StatusMapper {
     public StatusDto statusToDto(Status status){
         StatusDto statusDto = new StatusDto();
