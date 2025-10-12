@@ -5,11 +5,12 @@ import com.ebooks.bankservice.dtos.BankAdminLoginResponseDto;
 import com.ebooks.bankservice.entities.BankUser;
 import com.ebooks.bankservice.repositories.BankAdminRepository;
 import com.ebooks.bankservice.services.BankAuthService;
-import com.ebooks.commonservice.security.JwtUtil;
+import com.ebooks.commonservice.security.JwtService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
 
-//@Service
+@Service
 public class BankAuthServiceImpl implements BankAuthService {
 
     @Autowired
@@ -19,7 +20,7 @@ public class BankAuthServiceImpl implements BankAuthService {
     private PasswordEncoder passwordEncoder;
 
     @Autowired
-    private JwtUtil jwtUtil;
+    private JwtService jwtService;
 
     @Override
     public BankAdminLoginResponseDto login(BankAdminLoginRequestDto loginRequest) {
@@ -39,7 +40,7 @@ public class BankAuthServiceImpl implements BankAuthService {
         }
 
         BankAdminLoginResponseDto response = new BankAdminLoginResponseDto();
-        response.setToken("temp-token-no-security"); // Temporary token
+        response.setToken("temp-token-no-security");
         response.setMessage("Login successful (Security disabled)");
         response.setUsername(bankUser.getUsername());
         response.setBankId(bankUser.getBank().getId());

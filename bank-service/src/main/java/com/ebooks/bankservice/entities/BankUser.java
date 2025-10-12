@@ -1,30 +1,23 @@
 package com.ebooks.bankservice.entities;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import com.ebooks.commonservice.entities.AccessGroup;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.Setter;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.Collections;
 
 @Entity
 @Getter
 @Setter
-@RequiredArgsConstructor
 @Table(name = "bank_user")
-public class BankUser {
+public class BankUser implements UserDetails {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -57,8 +50,12 @@ public class BankUser {
     @Column(name = "is_admin", nullable = false)
     private Boolean isAdmin = false;
 
-    @Column(name = "access_group_id")
-    private Long accessGroupId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "access_group_id")
+    private AccessGroup accessGroup;
+
+    @Transient
+    private Collection<? extends GrantedAuthority> authorities;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -76,5 +73,30 @@ public class BankUser {
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
-}
 
+    // UserDetails interface methods
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return authorities != null ? authorities : Collections.emptyList();
+    }
+
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        return !"BLOCKED".equals(status);
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return "ACTIVE".equals(status);
+    }
+}

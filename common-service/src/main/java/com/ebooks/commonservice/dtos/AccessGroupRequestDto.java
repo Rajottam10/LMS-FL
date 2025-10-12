@@ -20,8 +20,5 @@ public class AccessGroupRequestDto {
     @NotBlank(message = "Access group type is required")
     private String type;
 
-    @NotNull(message = "Status ID is required")
-    private Long statusId;
-
     private List<RoleGroupMapDto> roleGroupMaps;
 }

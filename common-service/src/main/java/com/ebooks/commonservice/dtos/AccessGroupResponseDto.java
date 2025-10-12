@@ -13,8 +13,7 @@ public class AccessGroupResponseDto {
     private String name;
     private String description;
     private String type;
-    private Long statusId;
-    private String statusName;
+    private String status;
     private LocalDateTime createdDate;
     private LocalDateTime updatedDate;
     private List<RoleDto> roles;

@@ -2,16 +2,15 @@ package com.ebooks.bankservice.services.impl;
 
 import com.ebooks.bankservice.dtos.BankUserRequestDto;
 import com.ebooks.bankservice.dtos.BankUserResponseDto;
+import com.ebooks.bankservice.entities.Bank;
 import com.ebooks.bankservice.entities.BankUser;
-import com.ebooks.bankservice.repositories.BankAdminRepository;
-import com.ebooks.bankservice.repositories.BankRepository;
-import com.ebooks.bankservice.services.BankAuthorizationService;
+import com.ebooks.bankservice.repositories.BankUserRepository;
 import com.ebooks.bankservice.services.BankUserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,211 +19,185 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
+@Transactional
 public class BankUserServiceImpl implements BankUserService {
 
     @Autowired
-    private BankAdminRepository bankAdminRepository;
-
-    @Autowired
-    private BankRepository bankRepository;
+    private BankUserRepository bankUserRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private BankAuthorizationService bankAuthorizationService;
-
     @Override
-    @Transactional
-    public BankUserResponseDto createBankUser(BankUserRequestDto requestDTO) {
-        BankUser currentAdmin = bankAuthorizationService.getCurrentBankAdmin();
-
-        // Check if current user has admin privileges
-        if (!Boolean.TRUE.equals(currentAdmin.getIsAdmin())) {
-            throw new AccessDeniedException("Only bank admins can create bank users");
+    public BankUserResponseDto createBankUser(BankUserRequestDto request) {
+        // Check if username or email already exists
+        if (bankUserRepository.existsByUsername(request.getUsername())) {
+            throw new RuntimeException("Username already exists: " + request.getUsername());
+        }
+        if (bankUserRepository.existsByEmail(request.getEmail())) {
+            throw new RuntimeException("Email already exists: " + request.getEmail());
         }
 
-        if (bankAdminRepository.existsByUsername(requestDTO.getUsername())) {
-            throw new RuntimeException("Username already exists: " + requestDTO.getUsername());
-        }
-        if (bankAdminRepository.existsByEmail(requestDTO.getEmail())) {
-            throw new RuntimeException("Email already exists: " + requestDTO.getEmail());
-        }
+        // Get current user's bank to ensure new user is created in the same bank
+        Bank currentUserBank = getCurrentUserBank();
 
         BankUser bankUser = new BankUser();
-        bankUser.setEmail(requestDTO.getEmail());
-        bankUser.setUsername(requestDTO.getUsername());
-        bankUser.setFullName(requestDTO.getFullName());
-        bankUser.setPassword(passwordEncoder.encode(requestDTO.getPassword()));
-        bankUser.setBank(currentAdmin.getBank());
+        bankUser.setUsername(request.getUsername());
+        bankUser.setEmail(request.getEmail());
+        bankUser.setFullName(request.getFullName());
+        bankUser.setPassword(passwordEncoder.encode(request.getPassword()));
+        bankUser.setBank(currentUserBank); // Use current user's bank
         bankUser.setStatus("ACTIVE");
-        bankUser.setIsAdmin(false);
-        bankUser.setAccessGroupId(requestDTO.getAccessGroupId());
+        bankUser.setIsAdmin(request.getIsAdmin());
+        bankUser.setAccessGroup(request.getAccessGroup());
 
-        BankUser savedUser = bankAdminRepository.save(bankUser);
-        return convertToDTO(savedUser);
+        BankUser savedUser = bankUserRepository.save(bankUser);
+        return mapToBankUserResponseDto(savedUser);
+    }
+
+    @Override
+    public BankUserResponseDto getBankUserById(Long id) {
+        BankUser bankUser = bankUserRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Bank user not found with id: " + id));
+
+        // Ensure the current user can only access users from their own bank
+        validateSameBankAccess(bankUser);
+
+        return mapToBankUserResponseDto(bankUser);
     }
 
     @Override
     public List<BankUserResponseDto> getBankUsersByCurrentBank() {
-        BankUser currentAdmin = bankAuthorizationService.getCurrentBankAdmin();
-        Long currentBankId = currentAdmin.getBank().getId();
-
-        List<BankUser> bankUsers = bankAdminRepository.findByBankIdAndIsAdminFalse(currentBankId);
+        Bank currentUserBank = getCurrentUserBank();
+        List<BankUser> bankUsers = bankUserRepository.findByBank(currentUserBank);
         return bankUsers.stream()
-                .map(this::convertToDTO)
+                .map(this::mapToBankUserResponseDto)
                 .collect(Collectors.toList());
     }
 
     @Override
     public Page<BankUserResponseDto> getBankUsersByCurrentBank(Pageable pageable) {
-        BankUser currentAdmin = bankAuthorizationService.getCurrentBankAdmin();
-        Long currentBankId = currentAdmin.getBank().getId();
-
-        Page<BankUser> bankUsersPage = bankAdminRepository.findByBankIdAndIsAdminFalse(currentBankId, pageable);
-        return bankUsersPage.map(this::convertToDTO);
+        Bank currentUserBank = getCurrentUserBank();
+        Page<BankUser> bankUsers = bankUserRepository.findByBank(currentUserBank, pageable);
+        return bankUsers.map(this::mapToBankUserResponseDto);
     }
 
     @Override
-    public BankUserResponseDto getBankUserById(Long userId) {
-        BankUser currentAdmin = bankAuthorizationService.getCurrentBankAdmin();
-        BankUser bankUser = bankAdminRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Bank user not found with id: " + userId));
+    public BankUserResponseDto updateBankUser(Long id, BankUserRequestDto request) {
+        BankUser bankUser = bankUserRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Bank user not found with id: " + id));
 
-        // Verify the user belongs to the same bank
-        if (!bankUser.getBank().getId().equals(currentAdmin.getBank().getId())) {
-            throw new AccessDeniedException("Not authorized to access this user");
+        // Ensure the current user can only update users from their own bank
+        validateSameBankAccess(bankUser);
+
+        // Check username uniqueness if changed
+        if (!bankUser.getUsername().equals(request.getUsername()) &&
+                bankUserRepository.existsByUsername(request.getUsername())) {
+            throw new RuntimeException("Username already exists: " + request.getUsername());
         }
 
-        return convertToDTO(bankUser);
+        // Check email uniqueness if changed
+        if (!bankUser.getEmail().equals(request.getEmail()) &&
+                bankUserRepository.existsByEmail(request.getEmail())) {
+            throw new RuntimeException("Email already exists: " + request.getEmail());
+        }
+
+        bankUser.setUsername(request.getUsername());
+        bankUser.setEmail(request.getEmail());
+        bankUser.setFullName(request.getFullName());
+        bankUser.setIsAdmin(request.getIsAdmin());
+        bankUser.setAccessGroup(request.getAccessGroup());
+
+        // Only update password if provided
+        if (request.getPassword() != null && !request.getPassword().isEmpty()) {
+            bankUser.setPassword(passwordEncoder.encode(request.getPassword()));
+        }
+
+        BankUser updatedUser = bankUserRepository.save(bankUser);
+        return mapToBankUserResponseDto(updatedUser);
     }
 
     @Override
-    @Transactional
-    public BankUserResponseDto updateBankUser(Long userId, BankUserRequestDto requestDTO) {
-        BankUser currentAdmin = bankAuthorizationService.getCurrentBankAdmin();
-        BankUser bankUser = bankAdminRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Bank user not found with id: " + userId));
+    public void deleteBankUser(Long id) {
+        BankUser bankUser = bankUserRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Bank user not found with id: " + id));
 
-        // Verify the user belongs to the same bank and is not admin
-        if (!bankUser.getBank().getId().equals(currentAdmin.getBank().getId()) ||
-                Boolean.TRUE.equals(bankUser.getIsAdmin())) {
-            throw new AccessDeniedException("Not authorized to update this user");
-        }
-
-        bankUser.setFullName(requestDTO.getFullName());
-        bankUser.setAccessGroupId(requestDTO.getAccessGroupId());
-
-        if (requestDTO.getPassword() != null && !requestDTO.getPassword().trim().isEmpty()) {
-            bankUser.setPassword(passwordEncoder.encode(requestDTO.getPassword()));
-        }
-
-        BankUser updatedUser = bankAdminRepository.save(bankUser);
-        return convertToDTO(updatedUser);
-    }
-
-    @Override
-    @Transactional
-    @PreAuthorize("hasRole('DELETE_USER')")
-    public void deleteBankUser(Long userId) {
-        BankUser currentAdmin = bankAuthorizationService.getCurrentBankAdmin();
-        BankUser bankUser = bankAdminRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Bank user not found with id: " + userId));
-
-        // Verify the user belongs to the same bank and is not admin
-        if (!bankUser.getBank().getId().equals(currentAdmin.getBank().getId())) {
-            throw new AccessDeniedException("Not authorized to delete users from other banks");
-        }
-
-        if (Boolean.TRUE.equals(bankUser.getIsAdmin())) {
-            throw new AccessDeniedException("Not authorized to delete admin users");
-        }
-
-        // Check if user is already deleted
-        if ("DELETED".equals(bankUser.getStatus())) {
-            throw new RuntimeException("User is already deleted");
-        }
-
-        // Allow deletion of both active and blocked users
-        if (!"ACTIVE".equals(bankUser.getStatus()) && !"BLOCKED".equals(bankUser.getStatus())) {
-            throw new RuntimeException("Cannot delete user with status: " + bankUser.getStatus());
-        }
+        // Ensure the current user can only delete users from their own bank
+        validateSameBankAccess(bankUser);
 
         bankUser.setStatus("DELETED");
-        bankAdminRepository.save(bankUser);
+        bankUserRepository.save(bankUser);
     }
 
     @Override
-    @Transactional
-    @PreAuthorize("hasRole('BLOCK_USER')")
-    public void blockBankUser(Long userId) {
-        BankUser currentAdmin = bankAuthorizationService.getCurrentBankAdmin();
-        BankUser bankUser = bankAdminRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Bank user not found with id: " + userId));
+    public void blockBankUser(Long id) {
+        BankUser bankUser = bankUserRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Bank user not found with id: " + id));
 
-        // Verify the user belongs to the same bank and is not admin
-        if (!bankUser.getBank().getId().equals(currentAdmin.getBank().getId())) {
-            throw new AccessDeniedException("Not authorized to block users from other banks");
-        }
-
-        if (Boolean.TRUE.equals(bankUser.getIsAdmin())) {
-            throw new AccessDeniedException("Not authorized to block admin users");
-        }
-
-        // Check if user is already blocked or deleted
-        if ("BLOCKED".equals(bankUser.getStatus())) {
-            throw new RuntimeException("User is already blocked");
-        }
-        if ("DELETED".equals(bankUser.getStatus())) {
-            throw new RuntimeException("Cannot block a deleted user");
-        }
-
-        // Only active users can be blocked
-        if (!"ACTIVE".equals(bankUser.getStatus())) {
-            throw new RuntimeException("Only active users can be blocked");
-        }
+        // Ensure the current user can only block users from their own bank
+        validateSameBankAccess(bankUser);
 
         bankUser.setStatus("BLOCKED");
-        bankAdminRepository.save(bankUser);
+        bankUserRepository.save(bankUser);
     }
 
     @Override
-    @Transactional
-    @PreAuthorize("hasRole('UNBLOCK_USER')")
-    public void unblockBankUser(Long userId) {
-        BankUser currentAdmin = bankAuthorizationService.getCurrentBankAdmin();
-        BankUser bankUser = bankAdminRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Bank user not found with id: " + userId));
+    public void unblockBankUser(Long id) {
+        BankUser bankUser = bankUserRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Bank user not found with id: " + id));
 
-        // Verify the user belongs to the same bank and is not admin
-        if (!bankUser.getBank().getId().equals(currentAdmin.getBank().getId())) {
-            throw new AccessDeniedException("Not authorized to unblock users from other banks");
-        }
-
-        if (Boolean.TRUE.equals(bankUser.getIsAdmin())) {
-            throw new AccessDeniedException("Not authorized to unblock admin users");
-        }
-
-        // ONLY blocked users can be unblocked (strict requirement)
-        if (!"BLOCKED".equals(bankUser.getStatus())) {
-            throw new RuntimeException("Only blocked users can be unblocked. Current status: " + bankUser.getStatus());
-        }
+        // Ensure the current user can only unblock users from their own bank
+        validateSameBankAccess(bankUser);
 
         bankUser.setStatus("ACTIVE");
-        bankAdminRepository.save(bankUser);
+        bankUserRepository.save(bankUser);
     }
 
-    private BankUserResponseDto convertToDTO(BankUser bankUser) {
+    // Helper method to get current user's bank
+    private Bank getCurrentUserBank() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String currentUsername = authentication.getName();
+
+        BankUser currentUser = bankUserRepository.findByUsername(currentUsername)
+                .orElseThrow(() -> new RuntimeException("Current user not found"));
+
+        if (currentUser.getBank() == null) {
+            throw new RuntimeException("Current user is not associated with any bank");
+        }
+
+        return currentUser.getBank();
+    }
+
+    // Helper method to validate that the current user can only access users from their own bank
+    private void validateSameBankAccess(BankUser targetUser) {
+        Bank currentUserBank = getCurrentUserBank();
+
+        if (targetUser.getBank() == null || !currentUserBank.getId().equals(targetUser.getBank().getId())) {
+            throw new RuntimeException("Access denied: You can only manage users from your own bank");
+        }
+    }
+
+    private BankUserResponseDto mapToBankUserResponseDto(BankUser bankUser) {
         BankUserResponseDto dto = new BankUserResponseDto();
         dto.setId(bankUser.getId());
-        dto.setEmail(bankUser.getEmail());
         dto.setUsername(bankUser.getUsername());
+        dto.setEmail(bankUser.getEmail());
         dto.setFullName(bankUser.getFullName());
         dto.setStatus(bankUser.getStatus());
-        dto.setBankId(bankUser.getBank().getId());
-        dto.setBankName(bankUser.getBank().getName());
-        dto.setAccessGroupId(bankUser.getAccessGroupId());
+        dto.setIsAdmin(bankUser.getIsAdmin());
         dto.setCreatedAt(bankUser.getCreatedAt());
+        dto.setUpdatedAt(bankUser.getUpdatedAt());
+
+        if (bankUser.getBank() != null) {
+            dto.setBankId(bankUser.getBank().getId());
+            dto.setBankName(bankUser.getBank().getName());
+        }
+
+        if (bankUser.getAccessGroup() != null) {
+            dto.setAccessGroupId(bankUser.getAccessGroup().getId());
+            dto.setAccessGroupName(bankUser.getAccessGroup().getName());
+        }
+
         return dto;
     }
 }
