@@ -1,14 +1,19 @@
 package com.ebooks.systemservice.services;
 
-import com.ebooks.commonservice.dtos.AccessGroupRequestDto;
-import com.ebooks.commonservice.dtos.AccessGroupResponseDto;
+
+import com.ebooks.commonservice.dtos.AccessGroupRequest;
+import com.ebooks.commonservice.dtos.AccessGroupResponse;
 
 import java.util.List;
 
 public interface AccessGroupService {
-    AccessGroupResponseDto createAccessGroup(AccessGroupRequestDto accessGroupRequestDto);
-    AccessGroupResponseDto getAccessGroupById(Long id);
-    List<AccessGroupResponseDto> getAllAccessGroup();
-    AccessGroupResponseDto updateAccessGroup(Long id, AccessGroupRequestDto accessGroupRequestDto);
-    void deleteAccessGroup(Long id);
+    List<AccessGroupResponse> getAllAccessGroup();
+
+    AccessGroupResponse createAccessGroup(AccessGroupRequest request);
+
+    AccessGroupResponse findAccessGroupById(Long accessGroupId);
+
+    void deleteAccessGroup(Long accessGroupId);
+
+    AccessGroupResponse updateAccessGroup(Long accessGroupId, AccessGroupRequest request);
 }

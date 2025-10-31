@@ -1,89 +1,52 @@
 package com.ebooks.commonservice.entities;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.Where;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 
-@Entity
 @Getter
 @Setter
+@AllArgsConstructor
+@NoArgsConstructor
+@Entity
 @Table(name = "access_group")
+@SQLDelete(sql = "UPDATE access_group SET deleted = true WHERE id = ? ")
+@Where(clause = "deleted = false")
 public class AccessGroup {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "access_group_id", nullable = false, unique = true)
     private Long id;
-
-    @Column(name = "name", nullable = false)
-    @NotBlank(message = "Access group name is required")
+    @Column(unique = true, nullable = false)
     private String name;
-
-    @Column(name = "description", columnDefinition = "TEXT")
     private String description;
-
-    @Column(name = "type", nullable = false)
-    @NotBlank(message = "Access group type is required")
+    private LocalDateTime recordedAt;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
     private String type;
-
-    @Column(name = "recorded_date")
-    private LocalDateTime recordedDate;
-
-    @Column(name = "created_date")
-    private LocalDateTime createdDate;
-
-    @Column(name = "updated_date")
-    private LocalDateTime updatedDate;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "status")
-    @NotNull(message = "Status is required")
+    @ManyToOne
+    @JoinColumn(name = "status_id")
     private Status status;
 
-    @OneToMany(mappedBy = "accessGroup", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<AccessGroupRoleMap> accessGroupRoleMaps = new HashSet<>();
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bank_id", nullable = true)
+    private Bank bank;
+
+    private boolean deleted = Boolean.FALSE;
 
     @PrePersist
     protected void onCreate() {
-        createdDate = LocalDateTime.now();
-        recordedDate = LocalDateTime.now();
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedDate = LocalDateTime.now();
-    }
-
-    public void addRole(Role role) {
-        AccessGroupRoleMap map = new AccessGroupRoleMap();
-        map.setAccessGroup(this);
-        map.setRole(role);
-        map.setIsActive(true);
-        this.accessGroupRoleMaps.add(map);
-    }
-
-    public void removeRole(Role role) {
-        this.accessGroupRoleMaps.removeIf(map -> map.getRole().equals(role));
-    }
-
-    public void clearRoles() {
-        this.accessGroupRoleMaps.clear();
+        updatedAt = LocalDateTime.now();
     }
 }

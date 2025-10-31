@@ -1,10 +1,10 @@
 package com.ebooks.commonservice.repositories;
 
+
 import com.ebooks.commonservice.entities.AccessGroup;
 import com.ebooks.commonservice.entities.AccessGroupRoleMap;
 import com.ebooks.commonservice.entities.Role;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -13,9 +13,14 @@ import java.util.List;
 
 @Repository
 public interface AccessGroupRoleMapRepository extends JpaRepository<AccessGroupRoleMap, Long> {
-    List<AccessGroupRoleMap> findByAccessGroupAndIsActiveTrue(AccessGroup accessGroup);
+    AccessGroupRoleMap findByAccessGroupAndRole(AccessGroup accessGroup, Role role);
+
+    List<AccessGroupRoleMap> findByAccessGroup(AccessGroup accessGroup);
+
+    void deleteByAccessGroupId(Long accessGroupId);
+
+    @Query(value = "SELECT role_id FROM access_group_role_map WHERE access_group_id IN (:agIds) AND is_active = true", nativeQuery = true)
+    List<Long> findActiveRoleIdsByAccessGroupIds(@Param("agIds") List<Long> accessGroupIds);
+
     boolean existsByAccessGroupAndRoleAndIsActiveTrue(AccessGroup accessGroup, Role role);
-    @Modifying
-    @Query("UPDATE AccessGroupRoleMap agrm SET agrm.isActive = false WHERE agrm.accessGroup = :accessGroup")
-    void deactivateAllMappingsForAccessGroup(@Param("accessGroup") AccessGroup accessGroup);
 }

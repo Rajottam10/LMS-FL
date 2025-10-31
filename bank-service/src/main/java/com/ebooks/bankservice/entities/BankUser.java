@@ -1,72 +1,56 @@
 package com.ebooks.bankservice.entities;
 
 import com.ebooks.commonservice.entities.AccessGroup;
+import com.ebooks.commonservice.entities.Bank;
+import com.ebooks.commonservice.entities.Status;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.Where;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
-import java.util.Collections;
+import java.util.List;
 
 @Entity
 @Getter
 @Setter
 @Table(name = "bank_user")
+@SQLDelete(sql = "UPDATE bank_user SET deleted = true WHERE id = ?")
+@Where(clause = "deleted = false")
 public class BankUser implements UserDetails {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(nullable = false, unique = true)
-    @NotBlank(message = "Email is required")
-    @Email(message = "Email should be valid")
-    private String email;
-
-    @Column(nullable = false, unique = true)
-    @NotBlank(message = "Username is required")
-    private String username;
-
-    @Column(name = "full_name", nullable = false)
-    @NotBlank(message = "Full name is required")
     private String fullName;
-
-    @Column(nullable = false)
-    @NotBlank(message = "Password is required")
+    @Column(unique = true, nullable = false)
+    private String email;
+    private String mobileNumber;
+    private String address;
     private String password;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "bank_id")
-    private Bank bank;
-
-    @Column(name = "status", nullable = false)
-    @NotBlank(message = "Status is required")
-    private String status;
-
-    @Column(name = "is_admin", nullable = false)
-    private Boolean isAdmin = false;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "access_group_id")
-    private AccessGroup accessGroup;
-
-    @Transient
-    private Collection<? extends GrantedAuthority> authorities;
-
+    private boolean deleted;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    @ManyToOne
+    @JoinColumn(name = "access_group_id")
+    @JsonIgnore
+    private AccessGroup accessGroup;
+    @ManyToOne
+    @JoinColumn(name = "bank_id")
+    @JsonIgnore
+    private Bank bank;
+    @ManyToOne
+    @JoinColumn(name = "status_id")
+    private Status status;
 
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
-        if (isAdmin == null) {
-            isAdmin = false;
-        }
     }
 
     @PreUpdate
@@ -74,10 +58,18 @@ public class BankUser implements UserDetails {
         updatedAt = LocalDateTime.now();
     }
 
-    // UserDetails interface methods
+    @Transient
+    private Collection<? extends GrantedAuthority> authorities = List.of();
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return authorities != null ? authorities : Collections.emptyList();
+        return authorities;
+    }
+
+
+    @Override
+    public String getUsername() {
+        return this.email;
     }
 
     @Override
@@ -87,7 +79,7 @@ public class BankUser implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return !"BLOCKED".equals(status);
+        return true;
     }
 
     @Override
@@ -97,6 +89,6 @@ public class BankUser implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return "ACTIVE".equals(status);
+        return true;
     }
 }
