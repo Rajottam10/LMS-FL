@@ -42,15 +42,15 @@ public class DataInitializer {
                 log.info("   - CUST_999999999: 5,000.00");
 
                 Customer customer2 = new Customer();
-                customer2.setBankCode("BANK001");
+                customer2.setBankCode("BANK002");
                 customer2.setAmount(new BigDecimal("3000.00")); // Matches log: 3,000.00
                 customer2.setCustomerNumber("888888888");
                 customerRepository.save(customer2);
                 log.info("   - CUST_888888888: 3,000.00");
 
-                log.info("✅ Sample account data initialized successfully");
+                log.info("Sample account data initialized successfully");
             } else {
-                log.info("📊 Accounts already exist in database");
+                log.info(" Accounts already exist in database");
             }
         } catch (Exception e) {
             log.error("❌ Failed to initialize sample data: {}", e.getMessage(), e);

@@ -1,9 +1,12 @@
 package com.ebooks.accrualsaccountingservice.services.impl;
 
-import com.ebooks.accrualsaccountingservice.entities.OverdueInfo;
-import com.ebooks.accrualsaccountingservice.repositories.OverdueInfoRepository;
+
 import com.ebooks.accrualsaccountingservice.services.OverdueInfoService;
+import com.ebooks.commonmoduleloan.entities.OverdueInfo;
+import com.ebooks.commonmoduleloan.repositories.OverdueInfoRepository;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
 
 @Service
 public class OverdueInfoInfoServiceImpl implements OverdueInfoService {
@@ -16,6 +19,11 @@ public class OverdueInfoInfoServiceImpl implements OverdueInfoService {
     @Override
     public void createOverdue(OverdueInfo overdueInfo) {
         overdueInfoRepository.save(overdueInfo);
+    }
+
+    @Override
+    public boolean existsByLoanAndInstallmentAndDate(String loanNumber, Integer installmentNumber, LocalDate d) {
+        return overdueInfoRepository.existsByLoanNumberAndInstallmentNumberAndAccrualDate(loanNumber, installmentNumber, d);
     }
 
 }

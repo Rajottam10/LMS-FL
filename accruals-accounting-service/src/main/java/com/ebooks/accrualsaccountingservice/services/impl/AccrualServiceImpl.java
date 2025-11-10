@@ -1,18 +1,20 @@
 package com.ebooks.accrualsaccountingservice.services.impl;
 
-import com.ebooks.accrualsaccountingservice.entities.EMISchedule;
-import com.ebooks.accrualsaccountingservice.entities.InterestInfo;
-import com.ebooks.accrualsaccountingservice.entities.LateFeeInfo;
-import com.ebooks.accrualsaccountingservice.entities.OverdueInfo;
-import com.ebooks.accrualsaccountingservice.entities.PenaltyInfo;
-import com.ebooks.accrualsaccountingservice.services.AccrualService;
-import com.ebooks.accrualsaccountingservice.services.EMIScheduleService;
 import com.ebooks.accrualsaccountingservice.services.InterestInfoService;
 import com.ebooks.accrualsaccountingservice.services.LateFeeInfoService;
 import com.ebooks.accrualsaccountingservice.services.OverdueInfoService;
 import com.ebooks.accrualsaccountingservice.services.PenaltyInfoService;
+import com.ebooks.commonmoduleloan.services.AccrualService;
+import com.ebooks.commonmoduleloan.entities.EMISchedule;
+import com.ebooks.commonmoduleloan.entities.InterestInfo;
+import com.ebooks.commonmoduleloan.entities.LateFeeInfo;
+import com.ebooks.commonmoduleloan.entities.LoanDetail;
+import com.ebooks.commonmoduleloan.entities.OverdueInfo;
+import com.ebooks.commonmoduleloan.entities.PenaltyInfo;
+import com.ebooks.commonmoduleloan.services.EMIScheduleServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -27,103 +29,159 @@ public class AccrualServiceImpl implements AccrualService {
     private final LateFeeInfoService lateFeeInfoService;
     private final OverdueInfoService overdueInfoService;
     private final PenaltyInfoService penaltyInfoService;
-    private final EMIScheduleService emiScheduleService;
+    private final EMIScheduleServiceImpl emiScheduleService;
+    private final LoanDetailService loanDetailService;
+
     public AccrualServiceImpl(
             InterestInfoService interestInfoService,
             LateFeeInfoService lateFeeInfoService,
             OverdueInfoService overdueInfoService,
             PenaltyInfoService penaltyInfoService,
-            EMIScheduleService eMIScheduleService) {
-        this.emiScheduleService = eMIScheduleService;
+            EMIScheduleServiceImpl emiScheduleService,
+            LoanDetailService loanDetailService) {
         this.interestInfoService = interestInfoService;
         this.lateFeeInfoService = lateFeeInfoService;
         this.overdueInfoService = overdueInfoService;
         this.penaltyInfoService = penaltyInfoService;
+        this.emiScheduleService = emiScheduleService;
+        this.loanDetailService = loanDetailService;
     }
 
     @Override
+    @Transactional
     public void processDailyAccruals() {
         LocalDate today = LocalDate.now();
-//        LocalDate today = LocalDate.of(2025, 2, 1);
+        log.info("=== DAILY ACCRUAL JOB STARTED @ {} ===", today);
 
+        List<EMISchedule> schedules = emiScheduleService.allEMISchedules();
 
-        List<EMISchedule> activeSchedules = emiScheduleService.activeEMISchedules();
-
-        for (EMISchedule schedule : activeSchedules) {
-
-            boolean isAccrued = interestInfoService.existsByLoanAndInstallmentAndDate(
-                    schedule.getLoanNumber(),
-                    schedule.getInstallmentNumber(),
-                    today
-            );
-            if (isAccrued) continue;
-
-            // Skip accruals after demand date unless it's the last installment
-            if (today.isBefore(schedule.getInstallmentStartDate())) {
+        for (EMISchedule emi : schedules) {
+            if (isPaidOrDefault(emi) || isBeforeStart(emi, today)) {
                 continue;
             }
 
-            //  Interest
-            BigDecimal dailyInterest = accrueInterest(schedule);
-            InterestInfo accrualInterest =  new InterestInfo();
-            accrualInterest.setAccrualDate(today);
-            accrualInterest.setDailyInterestAmount(dailyInterest);
-            accrualInterest.setInstallmentNumber(schedule.getInstallmentNumber());
-            accrualInterest.setLoanNumber(schedule.getLoanNumber());
-            interestInfoService.createAccrual(accrualInterest);
-            log.info("Interest accrued for loan {} installment {}: {}", schedule.getLoanNumber(), schedule.getInstallmentNumber(), dailyInterest);
+            LoanDetail loan = loanDetailService.getLoanByLoanNumber(emi.getLoanNumber());
+            if (loan == null) {
+                log.warn("Loan not found for EMI {} (Loan: {})", emi.getId(), emi.getLoanNumber());
+                continue;
+            }
 
-            if (today.isAfter(schedule.getDemandDate())) {
-                BigDecimal dailyPenalty = accruePenalty(schedule);
-                PenaltyInfo penaltyInfo = new PenaltyInfo();
-                penaltyInfo.setAccrualDate(today);
-                penaltyInfo.setPenaltyAmount(dailyPenalty);
-                penaltyInfo.setInstallmentNumber(schedule.getInstallmentNumber());
-                penaltyInfo.setLoanNumber(schedule.getLoanNumber());
-                penaltyInfoService.createPenalty(penaltyInfo);
-                log.info("Penalty accrued for loan {} installment {}: {}", schedule.getLoanNumber(), schedule.getInstallmentNumber(), dailyPenalty);
+            // 1. REGULAR INTEREST: From installmentStartDate → today
 
-                // Overdue Interest
-                BigDecimal dailyOverdue = accrueOverdueInterest(schedule);
-                OverdueInfo overdueInfo = new OverdueInfo();
-                overdueInfo.setAccrualDate(today);
-                overdueInfo.setOverdueAmount(dailyOverdue);
-                overdueInfo.setInstallmentNumber(schedule.getInstallmentNumber());
-                overdueInfo.setLoanNumber(schedule.getLoanNumber());
-                overdueInfoService.createOverdue(overdueInfo);
-                log.info("Overdue interest accrued for loan {} installment {}: {}", schedule.getLoanNumber(), schedule.getInstallmentNumber(), dailyOverdue);
+            LocalDate interestStart = emi.getInstallmentStartDate();
+            LocalDate interestEnd = emiScheduleService.isLastInstallment(emi) ? today : emi.getDemandDate().minusDays(1);
 
-                //Late Fee
-                LateFeeInfo lateFeeInfo = new LateFeeInfo();
-                lateFeeInfo.setAccrualDate(today);
-                lateFeeInfo.setLateFeeAmount(BigDecimal.valueOf(200.00));
-                lateFeeInfo.setInstallmentNumber(schedule.getInstallmentNumber());
-                lateFeeInfo.setLoanNumber(schedule.getLoanNumber());
-                lateFeeInfoService.createLateFee(lateFeeInfo);
-                log.info("Late Fee accrued for loan {} installment {}: {}", schedule.getLoanNumber(), schedule.getInstallmentNumber(), "200.00");
+            if (interestEnd.isAfter(today)) interestEnd = today;
+
+            for (LocalDate date = interestStart; !date.isAfter(interestEnd); date = date.plusDays(1)) {
+                if (interestInfoService.existsByLoanAndInstallmentAndDate(
+                        emi.getLoanNumber(), emi.getInstallmentNumber(), date)) {
+                    continue;
+                }
+
+                BigDecimal dailyInterest = calculateDailyInterest(emi, loan);
+                InterestInfo info = InterestInfo.builder()
+                        .loanNumber(emi.getLoanNumber())
+                        .installmentNumber(emi.getInstallmentNumber())
+                        .accrualDate(date)
+                        .dailyInterestAmount(dailyInterest)
+                        .build();
+                interestInfoService.createAccrual(info);
+                log.debug("Interest {} accrued on {} for EMI {}", dailyInterest, date, emi.getId());
+            }
+
+            // 2. OVERDUE ACCRUALS: Only AFTER demandDate
+            if (today.isAfter(emi.getDemandDate())) {
+
+                // ——— PENALTY INTEREST: Daily from demandDate + 1 → today ———
+                LocalDate penaltyStart = emi.getDemandDate().plusDays(1);
+                LocalDate penaltyEnd = today;
+
+                for (LocalDate d = penaltyStart; !d.isAfter(penaltyEnd); d = d.plusDays(1)) {
+                    if (penaltyInfoService.existsByLoanAndInstallmentAndDate(
+                            emi.getLoanNumber(), emi.getInstallmentNumber(), d)) {
+                        continue;
+                    }
+
+                    BigDecimal dailyPenalty = calculateDailyPenalty(emi, loan);
+                    PenaltyInfo pInfo = PenaltyInfo.builder()
+                            .loanNumber(emi.getLoanNumber())
+                            .installmentNumber(emi.getInstallmentNumber())
+                            .accrualDate(d)
+                            .penaltyAmount(dailyPenalty)
+                            .build();
+                    penaltyInfoService.createPenalty(pInfo);
+                    log.debug("Penalty ₹{} accrued on {} for EMI {}", dailyPenalty, d, emi.getId());
+                }
+
+                // ——— OVERDUE INTEREST: Daily from demandDate + 1 → today ———
+                for (LocalDate d = penaltyStart; !d.isAfter(penaltyEnd); d = d.plusDays(1)) {
+                    if (overdueInfoService.existsByLoanAndInstallmentAndDate(
+                            emi.getLoanNumber(), emi.getInstallmentNumber(), d)) {
+                        continue;
+                    }
+
+                    BigDecimal dailyOverdue = calculateDailyOverdue(emi, loan);
+                    OverdueInfo oInfo = OverdueInfo.builder()
+                            .loanNumber(emi.getLoanNumber())
+                            .installmentNumber(emi.getInstallmentNumber())
+                            .accrualDate(d)
+                            .overdueAmount(dailyOverdue)
+                            .build();
+                    overdueInfoService.createOverdue(oInfo);
+                    log.debug("Overdue interest ₹{} accrued on {} for EMI {}", dailyOverdue, d, emi.getId());
+                }
+
+                // ——— LATE FEE: ONE TIME ONLY ———
+                if (!lateFeeInfoService.existsByLoanAndInstallment(
+                        emi.getLoanNumber(), emi.getInstallmentNumber())) {
+
+                    BigDecimal lateFeeAmount = loan.getLateFee() != null
+                            ? loan.getLateFee()
+                            : BigDecimal.valueOf(100.00);
+
+                    LateFeeInfo lateFee = LateFeeInfo.builder()
+                            .loanNumber(emi.getLoanNumber())
+                            .installmentNumber(emi.getInstallmentNumber())
+                            .accrualDate(today)
+                            .lateFeeAmount(lateFeeAmount)
+                            .build();
+
+                    lateFeeInfoService.createLateFee(lateFee);
+                    log.info("Late fee ₹{} applied on EMI {} (Loan: {})",
+                            lateFeeAmount, emi.getId(), emi.getLoanNumber());
+                }
             }
         }
+
+        log.info("=== DAILY ACCRUAL JOB COMPLETED ===");
     }
 
-    private BigDecimal accrueInterest(EMISchedule emi) {
-        //(Principal * rate) / (100 * 365)
-        return emi.getBeginningBalance()
-                .multiply(BigDecimal.valueOf(17))
-                .divide(BigDecimal.valueOf(100 * 365),4, RoundingMode.HALF_UP);
+    // ———————————————————— HELPER METHODS ————————————————————
+
+    private boolean isPaidOrDefault(EMISchedule emi) {
+        return "PAID".equals(emi.getStatus()) || "DEFAULT".equals(emi.getStatus());
     }
 
-    private BigDecimal accruePenalty(EMISchedule emi) {
-         //(Overdue Principal * penaltyRate) / (100 * 365)
-        return emi.getPrincipal()
-                .multiply(BigDecimal.valueOf(2))
-                .divide(BigDecimal.valueOf(100 * 365), RoundingMode.HALF_UP);
+    private boolean isBeforeStart(EMISchedule emi, LocalDate today) {
+        return today.isBefore(emi.getInstallmentStartDate());
     }
 
-    private BigDecimal accrueOverdueInterest(EMISchedule emi) {
-        //(Overdue Principal * rate) / (100 * 365)
-        return emi.getPrincipal()
-                .multiply(BigDecimal.valueOf(7))
-                .divide(BigDecimal.valueOf(100 * 365), RoundingMode.HALF_UP);
+    private BigDecimal calculateDailyInterest(EMISchedule emi, LoanDetail loan) {
+        BigDecimal rate = loan.getAnnualInterestRate() != null
+                ? loan.getAnnualInterestRate()
+                : BigDecimal.valueOf(12.00);
+        return emi.getBeginningBalance().multiply(rate).divide(BigDecimal.valueOf(100*365),4, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal calculateDailyPenalty(EMISchedule emi, LoanDetail loan) {
+        BigDecimal rate = loan.getPenaltyRate() != null ? loan.getPenaltyRate() : BigDecimal.valueOf(2.00);
+        return emi.getPrincipal().multiply(rate).divide(BigDecimal.valueOf(100*365),4,RoundingMode.HALF_UP);
+
+    }
+
+    private BigDecimal calculateDailyOverdue(EMISchedule emi, LoanDetail loan) {
+        BigDecimal rate = loan.getOverdueRate() != null ? loan.getOverdueRate() : BigDecimal.valueOf(16.00);
+        return emi.getPrincipal().multiply(rate).divide(BigDecimal.valueOf(100*365),4, RoundingMode.HALF_UP);
     }
 }
-

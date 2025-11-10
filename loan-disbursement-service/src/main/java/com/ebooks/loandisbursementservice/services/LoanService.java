@@ -1,5 +1,7 @@
 package com.ebooks.loandisbursementservice.services;
 
+import com.ebooks.commonmoduleloan.entities.EMISchedule;
+import com.ebooks.commonmoduleloan.entities.LoanDetail;
 import com.ebooks.loandisbursementservice.dtos.IsoTransferRequest;
 import com.ebooks.loandisbursementservice.dtos.IsoTransferResponse;
 import com.ebooks.loandisbursementservice.dtos.LoanBookRequest;
@@ -10,10 +12,8 @@ import com.ebooks.loandisbursementservice.dtos.LoanProcessRequest;
 import com.ebooks.loandisbursementservice.dtos.LoanProcessResponse;
 import com.ebooks.loandisbursementservice.dtos.LoanSchedule;
 import com.ebooks.loandisbursementservice.entities.BankLoanConfig;
-import com.ebooks.loandisbursementservice.entities.EmiSchedule;
 import com.ebooks.loandisbursementservice.entities.FoneloanLimits;
-import com.ebooks.loandisbursementservice.entities.LoanDetail;
-import com.ebooks.loandisbursementservice.repositories.EmiScheduleRepository;
+import com.ebooks.loandisbursementservice.repositories.EMIScheduleRepository;
 import com.ebooks.loandisbursementservice.repositories.FoneloanLimitsRepository;
 import com.ebooks.loandisbursementservice.repositories.LoanDetailRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -38,7 +39,7 @@ import java.util.Random;
 public class LoanService {
     private final FoneloanLimitsRepository foneloanLimitsRepository;
     private final LoanDetailRepository loanDetailRepository;
-    private final EmiScheduleRepository emiScheduleRepository;
+    private final EMIScheduleRepository emiScheduleRepository;
     private final BankIsoClient bankIsoClient;
     private final BankLoanConfigService bankLoanConfigService;
 
@@ -120,7 +121,6 @@ public class LoanService {
 
         BigDecimal annualInterestRate = bankLoanConfig.getAnnualInterestRate();
 
-
         BigDecimal monthlyRate = annualInterestRate.divide(BigDecimal.valueOf(12 * 100), 10, RoundingMode.HALF_UP);
 
         BigDecimal onePlusRPowerN = (BigDecimal.ONE.add(monthlyRate)).pow(tenure);
@@ -133,12 +133,17 @@ public class LoanService {
         BigDecimal outstanding = loanAmount;
 
         for (int i = 1; i <= tenure; i++) {
+            LocalDate installmentStart = request.getEmiStartDate().plusMonths(i - 1);
+            LocalDate dueDate = installmentStart.plusMonths(1).minusDays(1);
+            LocalDate demandDate = installmentStart.plusMonths(1);
+            long days = ChronoUnit.DAYS.between(installmentStart, demandDate);
+
             BigDecimal interest = outstanding.multiply(monthlyRate).setScale(2, RoundingMode.HALF_UP);
             BigDecimal principal = emi.subtract(interest).setScale(2, RoundingMode.HALF_UP);
 
             if (i == tenure) {
                 principal = outstanding;
-                emi = principal.add(interest);
+                emi = principal.add(interest).setScale(2, RoundingMode.HALF_UP);;
             }
             outstanding = outstanding.subtract(principal).setScale(2, RoundingMode.HALF_UP);
 
@@ -148,7 +153,10 @@ public class LoanService {
             schedule.setInterestComponent(interest);
             schedule.setPrincipalComponent(principal);
             schedule.setOutstandingPrincipal(outstanding.max(BigDecimal.ZERO));
-            schedule.setDueDate(request.getPaymentDate().plusMonths(i - 1));
+            schedule.setInstallmentStartDate(installmentStart);
+            schedule.setDemandDate(demandDate);
+            schedule.setInterestApplicableDays((int) days);
+            schedule.setStatus("PENDING");
             schedules.add(schedule);
         }
 
@@ -159,7 +167,8 @@ public class LoanService {
         Map<String, Object> bookingData = new HashMap<>();
         bookingData.put("loanAmount", loanAmount);
         bookingData.put("tenure", tenure);
-        bookingData.put("paymentDate", request.getPaymentDate());
+        bookingData.put("emiStartDate", request.getEmiStartDate());
+        bookingData.put("paymentDate", request.getEmiStartDate().plusMonths(1));
         bookingData.put("adminFee", adminFee);
         bookingData.put("schedules", schedules);
         bookingStore.put(key, bookingData);
@@ -178,6 +187,8 @@ public class LoanService {
                 return percentageFee;
             case FLAT_RATE:
                 return adminFeeValue;
+            case GREATER_AMONGST_FLAT_OR_PERCENTAGE:
+                return percentageFee.max(percentageFee);
             default:
                 return BigDecimal.ZERO;
         }
@@ -199,33 +210,46 @@ public class LoanService {
 
         BigDecimal loanAmount = (BigDecimal) booking.get("loanAmount");
         int tenure = (Integer) booking.get("tenure");
-        LocalDate paymentDate = (LocalDate) booking.get("paymentDate");
+        LocalDate emiStartDate = (LocalDate) booking.get("emiStartDate");
         BigDecimal adminFee = (BigDecimal) booking.get("adminFee");
+        LocalDate paymentDate = (LocalDate) booking.get("paymentDate");
 
         @SuppressWarnings("unchecked")
         List<LoanSchedule> schedules = (List<LoanSchedule>) booking.get("schedules");
 
         String loanNumber = generateLoanNumber();
 
-        LoanDetail loanDetail = new LoanDetail();
-        loanDetail.setLoanNumber(loanNumber);
-        loanDetail.setCustomerNumber(request.getCustomerNumber());
-        loanDetail.setBankCode(request.getBankCode());
-        loanDetail.setLoanAmount(loanAmount);
-        loanDetail.setTenure(tenure);
-        loanDetail.setPaymentDate(paymentDate);
-        loanDetail.setLoanAdminFee(adminFee);
+        LoanDetail loanDetail = LoanDetail.builder()
+                .loanNumber(loanNumber)
+                .customerNumber(request.getCustomerNumber())
+                .bankCode(request.getBankCode())
+                .loanAmount(loanAmount)
+                .tenure(tenure)
+                .loanStartDate(emiStartDate)
+                .loanEndDate(emiStartDate.plusMonths(tenure))
+                .loanAdminFee(adminFee)
+                .annualInterestRate(BigDecimal.valueOf(12))
+                .lateFee(BigDecimal.valueOf(100))
+                .overdueRate(BigDecimal.valueOf(16))
+                .penaltyRate(BigDecimal.valueOf(2))
+                .status("BOOKED")
+                .build();
+
         loanDetailRepository.save(loanDetail);
 
-        List<EmiSchedule> emiEntities = schedules.stream().map(s -> {
-            EmiSchedule e = new EmiSchedule();
+        List<EMISchedule> emiEntities = schedules.stream().map(s -> {
+            EMISchedule e = new EMISchedule();
             e.setLoanNumber(loanNumber);
             e.setInstallmentNumber(s.getInstallmentNo());
-            e.setDueDate(s.getDueDate());
-            e.setTotalEmi(s.getEmiAmount());
-            e.setPrincipalAmount(s.getPrincipalComponent());
-            e.setInterestAmount(s.getInterestComponent());
-            e.setRemainingPrincipal(s.getOutstandingPrincipal());
+            e.setDemandDate(s.getDemandDate());
+            e.setEmiAmount(s.getEmiAmount());
+            e.setPrincipal(s.getPrincipalComponent());
+            e.setInterest(s.getInterestComponent());
+            e.setInstallmentStartDate(s.getInstallmentStartDate());
+            e.setInterestApplicableDays(s.getInterestApplicableDays());
+            e.setStatus(s.getStatus());
+            e.setBeginningBalance(loanAmount);
+            e.setEndingBalance(s.getOutstandingPrincipal());
             return e;
         }).toList();
         emiScheduleRepository.saveAll(emiEntities);
@@ -237,7 +261,7 @@ public class LoanService {
         isoTransferRequest.setAmount(loanAmount);
 
         log.info("Initiating transfer for loanNumber: {}", loanNumber);
-        IsoTransferResponse isoTransferResponse = bankIsoClient.transfer(isoTransferRequest);
+            IsoTransferResponse isoTransferResponse = bankIsoClient.transfer(isoTransferRequest);
         if (isoTransferResponse.getStatus() == null || isoTransferResponse.getStatus().equals("FAILED")) {
             otpStore.remove(key);
             bookingStore.remove(key);
@@ -271,5 +295,17 @@ public class LoanService {
         return (timestampPart + randomPart).substring(0, 20);
     }
 
+//    private void settingBeginningBalance(){
+//        List<EMISchedule> emiSched = new ArrayList<EMISchedule>();
+//        BigDecimal loanAmount = (BigDecimal) bookingStore.get("loanAmount");
+//        int tenure = bookingStore.get("tenure").size();
+//        emiSched.setBeginningBalance(loanAmount);
+//        int i = 0;
+//        do{
+//            BigDecimal value = emiSched.setBeginningBalance(emiSched.getEndingBalance());
+//            tenure ++;
+//            }while (i <= tenure-1);
+//        }
+//    }
 }
 

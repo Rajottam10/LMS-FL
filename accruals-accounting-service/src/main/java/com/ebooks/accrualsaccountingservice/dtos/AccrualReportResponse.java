@@ -14,6 +14,14 @@ public class AccrualReportResponse {
     private BigDecimal totalOverdueInterest = BigDecimal.ZERO;
     private BigDecimal totalLateFee = BigDecimal.ZERO;
 
+    public void addTotalInterest(BigDecimal amount) {
+        this.totalInterest = this.totalInterest.add(amount);
+    }
+
+    public void addTotalPenaltyInterest(BigDecimal amount) {
+        this.totalPenaltyInterest = this.totalPenaltyInterest.add(amount);
+    }
+
     public AccrualReportResponse(String loanNumber) {
         this.loanNumber = loanNumber;
     }

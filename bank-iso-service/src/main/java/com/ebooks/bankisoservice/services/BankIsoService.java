@@ -1,6 +1,5 @@
 package com.ebooks.bankisoservice.services;
 
-
 import com.ebooks.bankisoservice.dtos.IsoTransferRequest;
 import com.ebooks.bankisoservice.dtos.IsoTransferResponse;
 import com.ebooks.bankisoservice.entities.BankTransaction;
@@ -22,6 +21,13 @@ import java.util.UUID;
 public class BankIsoService {
     private final CustomerRepository customerRepository;
     private final BankTransactionRepository bankTransactionRepository;
+
+    public BigDecimal getBalance(String customerNumber) {
+        return customerRepository
+                .findCustomerByCustomerNumberAndBankCode(customerNumber, "BANK001")
+                .map(c -> c.getAmount() != null ? c.getAmount() : BigDecimal.ZERO)
+                .orElseThrow(() -> new RuntimeException("Invalid customer: " + customerNumber));
+    }
 
     @Transactional
     public IsoTransferResponse transfer(IsoTransferRequest request) {
@@ -97,5 +103,62 @@ public class BankIsoService {
         response.setAccountNumber(customerAccount);
         response.setBankCode(bankCode);
         return response;
+    }
+
+    @Transactional
+    public IsoTransferResponse prepay(IsoTransferRequest request) {
+        String bankCode = request.getBankCode();
+        String customerAccount = request.getAccountNumber();  // ← DEBIT FROM
+        BigDecimal amount = request.getAmount();
+
+        Customer bank = customerRepository
+                .findCustomerByCustomerNumberAndBankCode(null, bankCode)
+                .orElseThrow(() -> new RuntimeException("Bank account not found"));
+
+        Customer customer = customerRepository
+                .findCustomerByCustomerNumberAndBankCode(customerAccount, bankCode)
+                .orElseThrow(() -> new RuntimeException("Customer not found: " + customerAccount));
+
+        BigDecimal custBal = nullSafe(customer.getAmount());
+        if (custBal.compareTo(amount) < 0) {
+            throw new RuntimeException("Insufficient customer balance");
+        }
+
+        // CORRECT: Customer pays, Bank receives
+        customer.setAmount(custBal.subtract(amount));
+        bank.setAmount(nullSafe(bank.getAmount()).add(amount));
+
+        customerRepository.save(customer);
+        customerRepository.save(bank);
+
+        String txId = UUID.randomUUID().toString();
+        saveTransaction(txId, bank.getCustomerNumber(), TransactionType.CREDIT, amount, "Prepayment from " + customerAccount, bankCode, request.getLoanNumber());
+        saveTransaction(txId, customer.getCustomerNumber(), TransactionType.DEBIT, amount, "Prepayment to bank", bankCode, request.getLoanNumber());
+
+        return IsoTransferResponse.builder()
+                .transactionId(txId)
+                .status("SUCCESS")
+                .message("Prepayment successful")
+                .amount(amount)
+                .accountNumber(customerAccount)
+                .bankCode(bankCode)
+                .build();
+    }
+
+    private BigDecimal nullSafe(BigDecimal val) {
+        return val == null ? BigDecimal.ZERO : val;
+    }
+
+    private void saveTransaction(String txId, String acct, TransactionType type, BigDecimal amt, String remarks, String bankCode, String loanNumber) {
+        BankTransaction tx = new BankTransaction();
+        tx.setTransactionId(txId);
+        tx.setAccountNumber(acct);
+        tx.setType(type);
+        tx.setAmount(amt);
+        tx.setParticularRemarks(remarks);
+        tx.setBankCode(bankCode);
+        tx.setValueDate(LocalDate.now());
+        tx.setLoanNumber(loanNumber);
+        bankTransactionRepository.save(tx);
     }
 }

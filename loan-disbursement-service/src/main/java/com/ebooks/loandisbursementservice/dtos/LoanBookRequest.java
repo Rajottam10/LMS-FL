@@ -10,10 +10,10 @@ import java.time.LocalDate;
 @Getter
 @Setter
 public class LoanBookRequest {
-    @NotBlank(message = "b")
+    @NotBlank(message = "Customer number cannot be blank")
     private String customerNumber;
     private String bankCode;
     private BigDecimal loanAmount;
     private Integer tenure;
-    private LocalDate paymentDate;
+    private LocalDate emiStartDate;
 }

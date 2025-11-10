@@ -1,12 +1,13 @@
 package com.ebooks.accrualsaccountingservice.services;
 
-import com.ebooks.accrualsaccountingservice.entities.EMISchedule;
-import com.ebooks.accrualsaccountingservice.entities.InterestInfo;
-import com.ebooks.accrualsaccountingservice.entities.OverdueInfo;
 
-import java.math.BigDecimal;
+import com.ebooks.commonmoduleloan.entities.OverdueInfo;
+
 import java.time.LocalDate;
+
 
 public interface OverdueInfoService {
     void createOverdue(OverdueInfo overdueInfo);
+
+    boolean existsByLoanAndInstallmentAndDate(String loanNumber, Integer installmentNumber, LocalDate d);
 }

@@ -1,6 +1,6 @@
 package com.ebooks.accrualsaccountingservice.jobs;
 
-import com.ebooks.accrualsaccountingservice.services.AccrualService;
+import com.ebooks.commonmoduleloan.services.AccrualService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;

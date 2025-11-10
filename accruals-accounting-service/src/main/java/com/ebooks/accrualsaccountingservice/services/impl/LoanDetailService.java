@@ -1,8 +1,7 @@
 package com.ebooks.accrualsaccountingservice.services.impl;
 
-
-import com.ebooks.accrualsaccountingservice.entities.LoanDetail;
-import com.ebooks.accrualsaccountingservice.repositories.LoanDetailRepository;
+import com.ebooks.commonmoduleloan.entities.LoanDetail;
+import com.ebooks.commonmoduleloan.repositories.LoanDetailRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -21,7 +20,7 @@ public class LoanDetailService {
         return loanDetails;
     }
     public LoanDetail getLoanByLoanNumber(String loanNumber){
-        LoanDetail loanDetail = loanDetailRepository.findLoanDetailByLoanNumber(loanNumber);
+        LoanDetail loanDetail = loanDetailRepository.findLoanDetailByLoanNumber(loanNumber).orElseThrow(()-> new RuntimeException("The loan detailed were not found."));
         if (loanDetail == null){
             throw new RuntimeException("No loan found with loan number " + loanNumber);
         }

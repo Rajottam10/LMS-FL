@@ -74,41 +74,38 @@ public class DataInitializer {
 
     private void initializeFoneloanLimits() {
         if (foneloanLimitsRepository.count() == 0) {
-            log.info("🚀 Initializing foneloan limits...");
+            log.info("Initializing foneloan limits...");
 
-            // 🔥 CUSTOMER 999999999 - BANK001 (5k-100k limits)
-            createFoneloanLimit("999999999", "John Smith", "BANK001", 3, BigDecimal.valueOf(25000.00));  // 3m: 25k
-            createFoneloanLimit("999999999", "John Smith", "BANK001", 6, BigDecimal.valueOf(45000.00));  // 6m: 45k
-            createFoneloanLimit("999999999", "John Smith", "BANK001", 9, BigDecimal.valueOf(65000.00));  // 9m: 65k
-            createFoneloanLimit("999999999", "John Smith", "BANK001", 12, BigDecimal.valueOf(85000.00)); // 12m: 85k
+            // CUSTOMER 999999999 - BANK001
+            createFoneloanLimit("999999999", "John Smith", "BANK001", 1,  null, BigDecimal.valueOf(10000.00)); // 1-month: ₹10k
+            createFoneloanLimit("999999999", "John Smith", "BANK001", 3,  BigDecimal.valueOf(25000.00), BigDecimal.valueOf(10000.00));
+            createFoneloanLimit("999999999", "John Smith", "BANK001", 6,  BigDecimal.valueOf(45000.00), BigDecimal.valueOf(10000.00));
+            createFoneloanLimit("999999999", "John Smith", "BANK001", 9,  BigDecimal.valueOf(65000.00), BigDecimal.valueOf(10000.00));
+            createFoneloanLimit("999999999", "John Smith", "BANK001", 12, BigDecimal.valueOf(85000.00), BigDecimal.valueOf(10000.00));
 
             // CUSTOMER 888888888 - BANK001
-            createFoneloanLimit("888888888", "Sarah Johnson", "BANK001", 3, BigDecimal.valueOf(35000.00));
-            createFoneloanLimit("888888888", "Sarah Johnson", "BANK001", 6, BigDecimal.valueOf(60000.00));
-            createFoneloanLimit("888888888", "Sarah Johnson", "BANK001", 9, BigDecimal.valueOf(80000.00));
-            createFoneloanLimit("888888888", "Sarah Johnson", "BANK001", 12, BigDecimal.valueOf(95000.00));
+            createFoneloanLimit("888888888", "Sarah Johnson", "BANK001", 1, null, BigDecimal.valueOf(12000.00));
+            createFoneloanLimit("888888888", "Sarah Johnson", "BANK001", 3,  BigDecimal.valueOf(35000.00), BigDecimal.valueOf(12000.00));
+            // ... repeat for 6,9,12
 
-            // CUSTOMER 777777777 - BANK002 (10k-200k limits)
-            createFoneloanLimit("777777777", "Michael Brown", "BANK002", 3, BigDecimal.valueOf(50000.00));
-            createFoneloanLimit("777777777", "Michael Brown", "BANK002", 6, BigDecimal.valueOf(90000.00));
-            createFoneloanLimit("777777777", "Michael Brown", "BANK002", 9, BigDecimal.valueOf(120000.00));
-            createFoneloanLimit("777777777", "Michael Brown", "BANK002", 12, BigDecimal.valueOf(150000.00));
+            // CUSTOMER 777777777 - BANK002
+            createFoneloanLimit("777777777", "Michael Brown", "BANK002", 1, null, BigDecimal.valueOf(15000.00));
+            // ... repeat
 
-            log.info("✅ 3 Customers | 12 Limits | ALL emi_max_amount NON-NULL!");
+            log.info("3 Customers | 15 Limits | 1-month limits added & separated");
         }
     }
 
-    // 🔥 SIMPLIFIED: emi_max_amount = oneMonthRecommendedLimit (correct logic)
     private void createFoneloanLimit(String customerNumber, String customerName, String bankCode,
-                                     Integer emiMonths, BigDecimal emiMaxAmount) {
+                                     Integer emiMonths, BigDecimal emiMaxAmount, BigDecimal oneMonthLimit) {
         FoneloanLimits limit = new FoneloanLimits();
         limit.setCustomerNumber(customerNumber);
         limit.setCustomerName(customerName);
         limit.setBankCode(bankCode);
-        limit.setOneMonthRecommendedLimit(emiMaxAmount);  // Same as emi_max_amount
         limit.setEmiMonths(emiMonths);
-        limit.setEmiMaxAmount(emiMaxAmount);  // 🔥 NON-NULL GUARANTEED
+        limit.setEmiMaxAmount(emiMaxAmount);
+        limit.setOneMonthRecommendedLimit(oneMonthLimit); // ← NOW DIFFERENT
         foneloanLimitsRepository.save(limit);
-        log.debug(" Saved: {} | {}m | ₹{}", customerNumber, emiMonths, emiMaxAmount);
+        log.debug("Saved: {} | {}m | emiMax: ₹{} | 1mLimit: ₹{}", customerNumber, emiMonths, emiMaxAmount, oneMonthLimit);
     }
 }

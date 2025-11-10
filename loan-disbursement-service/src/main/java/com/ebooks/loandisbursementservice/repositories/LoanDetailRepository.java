@@ -1,6 +1,6 @@
 package com.ebooks.loandisbursementservice.repositories;
 
-import com.ebooks.loandisbursementservice.entities.LoanDetail;
+import com.ebooks.commonmoduleloan.entities.LoanDetail;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

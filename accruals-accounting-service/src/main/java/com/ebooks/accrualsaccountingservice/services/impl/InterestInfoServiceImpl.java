@@ -1,9 +1,10 @@
 package com.ebooks.accrualsaccountingservice.services.impl;
 
-import com.ebooks.accrualsaccountingservice.entities.InterestInfo;
-import com.ebooks.accrualsaccountingservice.repositories.EMIScheduleRepository;
-import com.ebooks.accrualsaccountingservice.repositories.InterestInfoRepository;
+
 import com.ebooks.accrualsaccountingservice.services.InterestInfoService;
+import com.ebooks.commonmoduleloan.entities.InterestInfo;
+import com.ebooks.commonmoduleloan.repositories.EMIScheduleRepository;
+import com.ebooks.commonmoduleloan.repositories.InterestInfoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -22,8 +23,9 @@ public class InterestInfoServiceImpl implements InterestInfoService {
         interestInfoRepository.save(interestInfo);
     }
 
+
     @Override
-    public boolean existsByLoanAndInstallmentAndDate(String loanNumber, Long installmentNumber, LocalDate accrualDate) {
+    public boolean existsByLoanAndInstallmentAndDate(String loanNumber, Integer installmentNumber, LocalDate accrualDate) {
         return interestInfoRepository.existsByLoanNumberAndInstallmentNumberAndAccrualDate(
                 loanNumber,
                 installmentNumber,

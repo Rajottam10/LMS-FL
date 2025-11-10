@@ -1,9 +1,10 @@
 package com.ebooks.accrualsaccountingservice.services;
 
-import com.ebooks.accrualsaccountingservice.entities.LateFeeInfo;
 
+import com.ebooks.commonmoduleloan.entities.LateFeeInfo;
 
 public interface LateFeeInfoService {
     void createLateFee(LateFeeInfo lateFeeInfo);
+    boolean existsByLoanAndInstallment(String loanNumber, Integer installmentNumber);
 
 }
